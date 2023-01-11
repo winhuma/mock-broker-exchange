@@ -4,7 +4,7 @@ services:
     image: mybroker:latest
     environment:
       - PORT=8080
-      - DB_PROJECT=host=quanta4.manageai.co.th port=25432 user=postgres password=postgres dbname=broker sslmode=disable
+      - DB_PROJECT=host=127.0.0.1 port=5432 user=postgres password=postgres dbname=broker sslmode=disable
     ports:
       - 8080:8080
     
