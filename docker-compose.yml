@@ -1,0 +1,25 @@
+version: '3.1'
+services:
+  db:
+    image: postgres:alpine3.17
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=broker
+    ports:
+      - "5432:5432"
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8880:8080
+
+  backend:
+    image: mybroker:latest
+    environment:
+      - DB_PROJECT=host=db port=5432 user=postgres password=postgres dbname=broker sslmode=disable
+    ports:
+      - 8080:8080
+    
