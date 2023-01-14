@@ -30,6 +30,6 @@ cd backend
 docker build -t mybroker-api .
 cd ../frontend
 docker build -t mybroker-front .
-
+cd ..
 docker-compose up 
 ```
