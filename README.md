@@ -4,7 +4,7 @@
 Project mock broker exchange
 
 ## Run Frontend
-Move to directory `front` and run follow with command.
+Move to directory `frontend` and run follow with command.
 ```
 cd frontend
 npm install
