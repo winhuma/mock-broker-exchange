@@ -20,9 +20,12 @@ func OrderCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(400).JSON(mymodels.MyResponse("data invalid format."))
 	}
-	err = services.OrderCreate(userID, mydata)
+	failMSG, err := services.OrderCreate(userID, mydata)
 	if err != nil {
 		return err
+	}
+	if failMSG != "" {
+		return c.Status(400).JSON(mymodels.MyResponse(failMSG))
 	}
 	return c.Status(200).JSON(mymodels.MyResponse("Create order success."))
 }

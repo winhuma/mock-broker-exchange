@@ -22,4 +22,11 @@ services:
       - DB_PROJECT=host=db port=5432 user=postgres password=postgres dbname=broker sslmode=disable
     ports:
       - 8080:8080
+  
+  frontend:
+    image: mybroker-front:latest
+    environment:
+      - NEXT_PUBLIC_BACKEND_API=http://127.0.0.1:8080
+    ports:
+      - 3000:3000
     

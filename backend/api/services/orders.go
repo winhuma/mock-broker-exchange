@@ -4,71 +4,104 @@ import (
 	"broker-exchange/api/repositories"
 	"broker-exchange/myconfig/mymodels"
 	"broker-exchange/myconfig/myvariable"
+	"fmt"
 
 	"github.com/shopspring/decimal"
-	"gorm.io/gorm"
 )
 
-func OrderCreate(userID int, userData mymodels.BodyOrderCreate) error {
+func OrderCreate(userID int, userData mymodels.BodyOrderCreate) (string, error) {
+
+	var failMSG string
+	var mapUserCurrBalance = map[int]mymodels.DBUserBalace{}
+	var mapCurrency = map[int]mymodels.DBCurrency{}
 	userBalance, err := repositories.UserBalanceGetByUserID(userID)
 	if err != nil {
-		return err
+		return failMSG, err
 	}
-	var mapUserBalance = map[int]mymodels.DBUserBalace{}
+	dCurrency, err := repositories.CurrencyGetAll()
+	if err != nil {
+		return failMSG, err
+	}
 	for _, balance := range userBalance {
-		mapUserBalance[balance.CurrencyID] = balance
+		mapUserCurrBalance[balance.CurrencyID] = balance
+	}
+	for _, currency := range dCurrency {
+		mapCurrency[currency.ID] = currency
 	}
 
-	dMyCurrency, err := repositories.CurrencyGetByID(userData.TargetCurrencyID)
-	if err != nil {
-		return err
-	}
-	dTargetCurrency, err := repositories.CurrencyGetByID(userData.TargetCurrencyID)
-	if err != nil {
-		return err
+	if userData.Action == myvariable.VarActionType.BUY {
+		failMSG, err = OrderBuy(userID, userData, mapUserCurrBalance, mapCurrency)
+	} else {
+		failMSG, err = OrderSale(userID, userData, mapUserCurrBalance, mapCurrency)
 	}
 
-	myTx := repositories.BeginTransaction()
-	err = UpdateMybalance(myTx, userID, userData.Action, mapUserBalance[userData.MyCurrencyID], userData)
-	if err != nil {
-		return err
-	}
-
-	err = UpdateTargetBalance(myTx, userID, userData, mapUserBalance[userData.TargetCurrencyID], dMyCurrency.ValueUSD, dTargetCurrency.ValueUSD)
-	if err != nil {
-		return err
-	}
-	return myTx.Commit().Error
+	return failMSG, err
 }
 
 // ##############################################
-func UpdateMybalance(mytx *gorm.DB, userID int, action string, mycurrencyUpdate mymodels.DBUserBalace, userData mymodels.BodyOrderCreate) error {
-	if action == myvariable.VarActionType.BUY {
-		mycurrencyUpdate.Balance = mycurrencyUpdate.Balance.Sub(userData.MyCurrencyValue.Decimal)
-	} else if action == myvariable.VarActionType.SALE {
-		mycurrencyUpdate.Balance = mycurrencyUpdate.Balance.Add(userData.MyCurrencyValue.Decimal)
+func OrderBuy(userID int, userData mymodels.BodyOrderCreate, mapUserCurrBalance map[int]mymodels.DBUserBalace, mapCurrency map[int]mymodels.DBCurrency) (string, error) {
+	var failMSG string
+	var err error
+	var mybalance = userData.MyCurrencyValue.Decimal
+	var rateUserSelect = mapCurrency[userData.MyCurrencyID].ValueUSD
+	var ratetarget = mapCurrency[userData.TargetCurrencyID].ValueUSD
+	var calRate = ratetarget.Div(rateUserSelect)
+	var myvalueSelectUpdate decimal.Decimal
+
+	myTx := repositories.BeginTransaction()
+
+	myvalueSelectUpdate = mybalance.Div(calRate)
+	dUpdate := mapUserCurrBalance[userData.MyCurrencyID].Balance.Sub(mybalance)
+	if dUpdate.LessThan(decimal.NewFromInt(0)) {
+		failMSG = fmt.Sprintf("%s not enaugh", mapCurrency[userData.MyCurrencyID].Name)
+		return failMSG, err
 	}
-	err := repositories.UserBalanceUpdate(mytx, userID, userData.MyCurrencyID, mycurrencyUpdate.Balance)
+	err = repositories.UserBalanceUpdate(myTx, userID, userData.MyCurrencyID, dUpdate)
 	if err != nil {
-		return err
+		return failMSG, err
 	}
-	return nil
+
+	if mapUserCurrBalance[userData.TargetCurrencyID].ID == 0 {
+		err = repositories.UserBalanceNewCurrency(nil, userID, userData.TargetCurrencyID, myvalueSelectUpdate)
+		if err != nil {
+			return failMSG, err
+		}
+	} else {
+		dTargetUpdate := mapUserCurrBalance[userData.TargetCurrencyID].Balance.Add(myvalueSelectUpdate)
+		err = repositories.UserBalanceUpdate(myTx, userID, userData.TargetCurrencyID, dTargetUpdate)
+		if err != nil {
+			return failMSG, err
+		}
+	}
+
+	return failMSG, myTx.Commit().Error
 }
 
-func UpdateTargetBalance(mytx *gorm.DB, userID int, userData mymodels.BodyOrderCreate, userTargetBalance mymodels.DBUserBalace, myrate decimal.Decimal, targetRate decimal.Decimal) error {
+func OrderSale(userID int, userData mymodels.BodyOrderCreate, mapUserCurrBalance map[int]mymodels.DBUserBalace, mapCurrency map[int]mymodels.DBCurrency) (string, error) {
+	var failMSG string
 	var err error
-	calRateTarget := userData.MyCurrencyValue.Decimal.Mul(myrate)
-	ValueUpdate := targetRate.Div(calRateTarget)
+	var mybalance = userData.MyCurrencyValue.Decimal
+	var rateUserSelect = mapCurrency[userData.MyCurrencyID].ValueUSD
+	var ratetarget = mapCurrency[userData.TargetCurrencyID].ValueUSD
+	var calRate = ratetarget.Div(rateUserSelect)
+	var myvalueSelectUpdate decimal.Decimal
 
-	if userTargetBalance.ID == 0 {
-		err = repositories.UserBalanceNewCurrency(mytx, userID, userData.TargetCurrencyID, ValueUpdate)
-	} else {
-		if userData.Action == myvariable.VarActionType.BUY {
-			ValueUpdate = userTargetBalance.Balance.Add(ValueUpdate)
-		} else if userData.Action == myvariable.VarActionType.SALE {
-			ValueUpdate = userTargetBalance.Balance.Sub(ValueUpdate)
-		}
-		err = repositories.UserBalanceUpdate(mytx, userID, userData.TargetCurrencyID, ValueUpdate)
+	myTx := repositories.BeginTransaction()
+
+	myvalueSelectUpdate = mybalance.Mul(calRate)
+	dTargetUpdate := mapUserCurrBalance[userData.TargetCurrencyID].Balance.Sub(mybalance)
+	if dTargetUpdate.LessThan(decimal.NewFromInt(0)) {
+		failMSG = fmt.Sprintf("%s not enaugh", mapCurrency[userData.MyCurrencyID].Name)
+		return failMSG, err
 	}
-	return err
+	err = repositories.UserBalanceUpdate(myTx, userID, userData.TargetCurrencyID, dTargetUpdate)
+	if err != nil {
+		return failMSG, err
+	}
+	dMeUpdate := mapUserCurrBalance[userData.MyCurrencyID].Balance.Add(myvalueSelectUpdate)
+	err = repositories.UserBalanceUpdate(myTx, userID, userData.MyCurrencyID, dMeUpdate)
+	if err != nil {
+		return failMSG, err
+	}
+	return failMSG, myTx.Commit().Error
 }
