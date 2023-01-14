@@ -1,0 +1,10 @@
+body {
+  color:black;
+  background: red;
+  animation: fadeBackground 6s;
+  animation-fill-mode: forwards;
+}
+@keyframes fadeBackground {
+  from { background-color: red; }
+  to { background-color: #D4EFDF; }
+}

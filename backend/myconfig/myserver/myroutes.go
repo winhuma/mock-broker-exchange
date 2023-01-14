@@ -11,6 +11,7 @@ func SetRoutes(app *fiber.App) {
 	app.Post("/login", handlers.UserLogin)
 
 	app.Get("/balance/me", handlers.UserGetMyBalance)
+	app.Post("/balance/starter", handlers.UserAddStarterBalance)
 
 	app.Get("/currencies", handlers.CurrencyGetAll)
 
